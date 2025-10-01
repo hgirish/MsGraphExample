@@ -40,21 +40,29 @@ public class MsGraphExamples
 
     [Function("users")]
     public async Task<IActionResult> GetUsersAsync([HttpTrigger(
-        AuthorizationLevel.Anonymous, "get", "post")] HttpRequest req,
+        AuthorizationLevel.Anonymous, "get", Route ="users/{username}")] HttpRequest req,
         string username)
     {
-        var user = await _graphServiceClient.Users[username].GetAsync();
-        //var user = await graphClient.Users.GetAsync();
-        var json = JsonSerializer.Serialize(user);
-       // var result = await _graphServiceClient.Groups.GetAsync();
+        var user = await _graphServiceClient.Users[username].GetAsync((requestConfiguration) =>
+        {
+            // requestConfiguration.QueryParameters.Filter = "appRoleAssignments/$count gt 0";
+            requestConfiguration.QueryParameters.Select = new string[] { "id", "displayName", "userPrincipalName" };
+        });
+        var userModel = new UserModel(
 
-        _logger.LogInformation("C# HTTP trigger function processed a request.");
-        return new OkObjectResult(user);
+             user?.Id,
+            user?.DisplayName,
+            user?.UserPrincipalName
+        );
+        //var user = await graphClient.Users.GetAsync();
+        var json = JsonSerializer.Serialize(userModel);
+
+        return new OkObjectResult(userModel);
     }
     [Function("usergroups")]
     public async Task<IActionResult> GetUserGroupsAsync(
         [HttpTrigger(
-        AuthorizationLevel.Anonymous, "get", "post")] HttpRequest req,
+        AuthorizationLevel.Anonymous, "get", Route ="usergroups/{username}")] HttpRequest req,
         string username)
     {
         //// Get direct memberships for a specific user by ID
@@ -71,28 +79,28 @@ public class MsGraphExamples
 
         var result = await _graphServiceClient.Users[username].MemberOf.GraphGroup.GetAsync((requestConfiguration) =>
         {
-           // requestConfiguration.QueryParameters.Filter = "appRoleAssignments/$count gt 0";
+            // requestConfiguration.QueryParameters.Filter = "appRoleAssignments/$count gt 0";
             requestConfiguration.QueryParameters.Select = new string[] { "id", "displayName", "description" };
         });
-       if (result.Value != null)
+        if (result?.Value != null)
         {
             allGroups.AddRange(result.Value.Select(x => new GroupModel
-            {
-                Id = x.Id,
-                DisplayName = x.DisplayName,
-                Description = x.Description
-            }));
+           (
+                         x.Id,
+                        x.DisplayName,
+                        x.Description
+                    )));
             while (result?.OdataNextLink != null)
             {
                 result = await _graphServiceClient.Groups.WithUrl(result.OdataNextLink).GetAsync();
-                if (result.Value != null)
+                if (result?.Value != null)
                 {
                     allGroups.AddRange(result.Value.Select(x => new GroupModel
-                    {
-                        Id = x.Id,
-                        DisplayName = x.DisplayName,
-                        Description = x.Description
-                    }));
+                   (
+                         x.Id,
+                        x.DisplayName,
+                        x.Description
+                    )));
                 }
             }
         }
@@ -101,7 +109,7 @@ public class MsGraphExamples
     [Function("groups")]
     public async Task<IActionResult> GetGroupsAsync(
          [HttpTrigger(
-        AuthorizationLevel.Anonymous, "get", "post")] HttpRequest req)
+        AuthorizationLevel.Anonymous, "get", Route ="groups")] HttpRequest req)
     {
         var allGroups = new List<GroupModel>();
 
@@ -112,12 +120,12 @@ public class MsGraphExamples
 
             if (groupsPage?.Value != null)
             {
-                allGroups.AddRange(groupsPage.Value.Select( x=>  new GroupModel
-                {
-                    Id = x.Id,
-                    DisplayName = x.DisplayName,
-                    Description = x.Description
-                }));
+                allGroups.AddRange(groupsPage.Value.Select(x => new GroupModel
+                (
+                         x.Id,
+                        x.DisplayName,
+                        x.Description
+                    )));
 
                 // Handle pagination if there are more groups
                 while (groupsPage?.OdataNextLink != null)
@@ -126,11 +134,11 @@ public class MsGraphExamples
                     if (groupsPage?.Value != null)
                     {
                         allGroups.AddRange(groupsPage.Value.Select(x => new GroupModel
-                        {
-                            Id = x.Id,
-                            DisplayName = x.DisplayName,
-                            Description = x.Description
-                        }));
+                        (
+                         x.Id,
+                        x.DisplayName,
+                        x.Description
+                    )));
                     }
                 }
             }
@@ -142,11 +150,46 @@ public class MsGraphExamples
 
         return new OkObjectResult(allGroups);
     }
-}
 
-public record GroupModel
-{
-    public string? Id { get; set; }
-    public string? DisplayName { get; set; }
-    public string? Description { get; set; }
+    [Function("usertransitivegroups")]
+    public async Task<IActionResult> GetUserTransitiveGroupsAsync(
+          [HttpTrigger(
+        AuthorizationLevel.Anonymous, "get",Route ="usertransitivegroups/{username}")] HttpRequest req,
+          string username)
+    {
+
+        var allGroups = new List<GroupModel>();
+
+        var result = await _graphServiceClient.Users[username].TransitiveMemberOf.GraphGroup.GetAsync((requestConfiguration) =>
+        {
+            // requestConfiguration.QueryParameters.Filter = "appRoleAssignments/$count gt 0";
+            requestConfiguration.QueryParameters.Select = new string[] { "id", "displayName", "description" };
+        });
+        if (result?.Value != null)
+        {
+            allGroups.AddRange(result.Value.Select(x => new GroupModel
+            (
+                         x.Id,
+                        x.DisplayName,
+                        x.Description
+                    )));
+            while (result?.OdataNextLink != null)
+            {
+                result = await _graphServiceClient.Users[username].TransitiveMemberOf.GraphGroup.WithUrl(result.OdataNextLink).GetAsync();
+                if (result?.Value != null)
+                {
+                    allGroups.AddRange(result.Value.Select(x => new GroupModel
+                    (
+                         x.Id,
+                        x.DisplayName,
+                        x.Description
+                    )));
+                }
+            }
+        }
+        return new OkObjectResult(allGroups);
+    }
 }
+public record GroupModel(string? Id, string? DisplayName, string? Description);
+
+public record UserModel(string? Id, string? DisplayName, string? UserPrincipalName);

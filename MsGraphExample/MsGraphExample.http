@@ -1,0 +1,19 @@
+﻿@MsGraphExample_HostAddress = http://localhost:7212
+
+###
+
+GET {{MsGraphExample_HostAddress}}/api/groups
+
+###
+
+GET {{MsGraphExample_HostAddress}}/api/usergroups/{username}
+
+###
+
+GET {{MsGraphExample_HostAddress}}/api/users/{username}
+
+###
+
+GET {{MsGraphExample_HostAddress}}/api/usertransitivegroups/{username}
+
+###
