@@ -36,7 +36,7 @@ public class MsGraphExamplesUsingManagedIdentity
             config.QueryParameters.Select = new[] { "id", "displayName", "userPrincipalName" };
         });
 
-        var userModel = new UserModel(user?.Id, user?.DisplayName, user?.UserPrincipalName);
+        var userModel = user.ToUserModel();
         return new OkObjectResult(userModel);
     }
 
@@ -50,12 +50,12 @@ public class MsGraphExamplesUsingManagedIdentity
             config.QueryParameters.Select = new[] { "id", "displayName", "userPrincipalName" };
         });
 
-        AddUsersFromResult(result, allUsers);
+        result.AddUsersTo(allUsers);
 
         while (result?.OdataNextLink != null)
         {
             result = await _graphServiceClient.Users.WithUrl(result.OdataNextLink).GetAsync();
-            AddUsersFromResult(result, allUsers);
+            result.AddUsersTo(allUsers);
         }
 
         return new OkObjectResult(allUsers);
@@ -72,12 +72,12 @@ public class MsGraphExamplesUsingManagedIdentity
             config.QueryParameters.Select = new[] { "id", "displayName", "description" };
         });
 
-        AddGroupsFromResult(result, allGroups);
+        result.AddGroupsTo(allGroups);
 
         while (result?.OdataNextLink != null)
         {
             result = await _graphServiceClient.Groups.WithUrl(result.OdataNextLink).GetAsync();
-            AddGroupsFromResult(result, allGroups);
+            result.AddGroupsTo(allGroups);
         }
 
         return new OkObjectResult(allGroups);
@@ -92,12 +92,12 @@ public class MsGraphExamplesUsingManagedIdentity
         try
         {
             var groupsPage = await _graphServiceClient.Groups.GetAsync();
-            AddGroupsFromResult(groupsPage, allGroups);
+            groupsPage.AddGroupsTo(allGroups);
 
             while (groupsPage?.OdataNextLink != null)
             {
                 groupsPage = await _graphServiceClient.Groups.WithUrl(groupsPage.OdataNextLink).GetAsync();
-                AddGroupsFromResult(groupsPage, allGroups);
+                groupsPage.AddGroupsTo(allGroups);
             }
         }
         catch (Exception ex)
@@ -119,31 +119,47 @@ public class MsGraphExamplesUsingManagedIdentity
             config.QueryParameters.Select = new[] { "id", "displayName", "description" };
         });
 
-        AddGroupsFromResult(result, allGroups);
+        result.AddGroupsTo(allGroups);
 
         while (result?.OdataNextLink != null)
         {
             result = await _graphServiceClient.Users[username].TransitiveMemberOf.GraphGroup.WithUrl(result.OdataNextLink).GetAsync();
-            AddGroupsFromResult(result, allGroups);
+            result.AddGroupsTo(allGroups);
         }
 
         return new OkObjectResult(allGroups);
     }
+}
 
-    private static void AddUsersFromResult(UserCollectionResponse? result, List<UserModel> allUsers)
+public static class UserCollectionResponseExtensions
+{
+    public static void AddUsersTo(this UserCollectionResponse? result, List<UserModel> allUsers)
     {
         if (result?.Value != null)
         {
-            allUsers.AddRange(result.Value.Select(user => new UserModel(user?.Id, user?.DisplayName, user?.UserPrincipalName)));
+            allUsers.AddRange(result.Value.Select(user => user.ToUserModel()));
         }
     }
 
-    private static void AddGroupsFromResult(GroupCollectionResponse? result, List<GroupModel> allGroups)
+    public static UserModel ToUserModel(this User? user)
+    {
+        return new UserModel(user?.Id, user?.DisplayName, user?.UserPrincipalName);
+    }
+}
+
+public static class GroupCollectionResponseExtensions
+{
+    public static void AddGroupsTo(this GroupCollectionResponse? result, List<GroupModel> allGroups)
     {
         if (result?.Value != null)
         {
-            allGroups.AddRange(result.Value.Select(x => new GroupModel(x.Id, x.DisplayName, x.Description)));
+            allGroups.AddRange(result.Value.Select(x => x.ToGroupModel()));
         }
+    }
+
+    public static GroupModel ToGroupModel(this Group? group)
+    {
+        return new GroupModel(group?.Id, group?.DisplayName, group?.Description);
     }
 }
 
