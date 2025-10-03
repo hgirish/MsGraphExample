@@ -6,11 +6,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Graph;
 using Microsoft.Graph.Models;
-using System.Security.Claims;
-using System.Text.Json;
-using System.Text.Json.Serialization;
-using System.Threading.Tasks;
-using static Microsoft.ApplicationInsights.MetricDimensionNames.TelemetryContext;
 
 namespace MsalExample;
 
@@ -19,162 +14,95 @@ public class MsGraphExamplesUsingManagedIdentity
     private readonly ILogger<MsGraphExamplesUsingManagedIdentity> _logger;
     private readonly IConfiguration _configuration;
     private readonly GraphServiceClient _graphServiceClient;
-    public MsGraphExamplesUsingManagedIdentity(ILogger<MsGraphExamplesUsingManagedIdentity> logger, IConfiguration configuration)
+
+    public MsGraphExamplesUsingManagedIdentity(
+        ILogger<MsGraphExamplesUsingManagedIdentity> logger,
+        IConfiguration configuration)
     {
         _logger = logger;
         _configuration = configuration;
-        var options = new TokenCredentialOptions
-        {
-            AuthorityHost = AzureAuthorityHosts.AzurePublicCloud,
-            
-        };
-        // Example using ClientSecretCredential
-        var scopes = new[] { "https://graph.microsoft.com/.default" };
-  
         var credential = new DefaultAzureCredential();
+        var scopes = new[] { "https://graph.microsoft.com/.default" };
         _graphServiceClient = new GraphServiceClient(credential, scopes);
-
     }
 
     [Function("miusers")]
-    public async Task<IActionResult> GetUsersAsync([HttpTrigger(
-        AuthorizationLevel.Anonymous, "get", Route ="mi/users/{username}")] HttpRequest req,
+    public async Task<IActionResult> GetUsersAsync(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "mi/users/{username}")] HttpRequest req,
         string username)
     {
-        var user = await _graphServiceClient.Users[username].GetAsync((requestConfiguration) =>
+        var user = await _graphServiceClient.Users[username].GetAsync(config =>
         {
-            // requestConfiguration.QueryParameters.Filter = "appRoleAssignments/$count gt 0";
-            requestConfiguration.QueryParameters.Select = new string[] { "id", "displayName", "userPrincipalName" };
+            config.QueryParameters.Select = new[] { "id", "displayName", "userPrincipalName" };
         });
-        var userModel = new UserModel(
 
-             user?.Id,
-            user?.DisplayName,
-            user?.UserPrincipalName
-        );
-        //var user = await graphClient.Users.GetAsync();
-        var json = JsonSerializer.Serialize(userModel);
-
+        var userModel = new UserModel(user?.Id, user?.DisplayName, user?.UserPrincipalName);
         return new OkObjectResult(userModel);
     }
+
     [Function("miallusers")]
-    public async Task<IActionResult> GetAllUsersAsync([HttpTrigger(
-        AuthorizationLevel.Anonymous, "get", Route ="mi/allusers")] HttpRequest req
-     )
+    public async Task<IActionResult> GetAllUsersAsync(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "mi/allusers")] HttpRequest req)
     {
         var allUsers = new List<UserModel>();
-        var result  = await _graphServiceClient.Users.GetAsync((requestConfiguration) =>
+        var result = await _graphServiceClient.Users.GetAsync(config =>
         {
-            // requestConfiguration.QueryParameters.Filter = "appRoleAssignments/$count gt 0";
-            requestConfiguration.QueryParameters.Select = new string[] { "id", "displayName", "userPrincipalName" };
+            config.QueryParameters.Select = new[] { "id", "displayName", "userPrincipalName" };
         });
-       
-        if (result?.Value != null)
-        {
-            allUsers.AddRange(result.Value.Select(user => new UserModel(user?.Id, user?.DisplayName, user?.UserPrincipalName)));
-        }
+
+        AddUsersFromResult(result, allUsers);
+
         while (result?.OdataNextLink != null)
         {
-            result = await _graphServiceClient.Users.WithUrl(result?.OdataNextLink).GetAsync();
-            
-
-            if (result?.Value != null)
-            {
-                allUsers.AddRange(result.Value.Select(user => new UserModel(user?.Id, user?.DisplayName, user?.UserPrincipalName)));
-            }
+            result = await _graphServiceClient.Users.WithUrl(result.OdataNextLink).GetAsync();
+            AddUsersFromResult(result, allUsers);
         }
-        //var user = await graphClient.Users.GetAsync();
-        var json = JsonSerializer.Serialize(allUsers);
 
-        return new OkObjectResult(json);
+        return new OkObjectResult(allUsers);
     }
+
     [Function("miusergroups")]
     public async Task<IActionResult> GetUserGroupsAsync(
-        [HttpTrigger(
-        AuthorizationLevel.Anonymous, "get", Route ="mi/usergroups/{username}")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "mi/usergroups/{username}")] HttpRequest req,
         string username)
     {
-        //// Get direct memberships for a specific user by ID
-        //var directMemberships = await _graphServiceClient.Users[username]
-        //    .MemberOf           
-        //    .GetAsync();
-
-        // Or for the currently signed-in user (delegated scenario)
-        // var directMemberships = await client.Me
-        //     .MemberOf
-        //     .Request()
-        //     .GetAsync();
         var allGroups = new List<GroupModel>();
-
-        var result = await _graphServiceClient.Users[username].MemberOf.GraphGroup.GetAsync((requestConfiguration) =>
+        var result = await _graphServiceClient.Users[username].MemberOf.GraphGroup.GetAsync(config =>
         {
-            // requestConfiguration.QueryParameters.Filter = "appRoleAssignments/$count gt 0";
-            requestConfiguration.QueryParameters.Select = new string[] { "id", "displayName", "description" };
+            config.QueryParameters.Select = new[] { "id", "displayName", "description" };
         });
-        if (result?.Value != null)
+
+        AddGroupsFromResult(result, allGroups);
+
+        while (result?.OdataNextLink != null)
         {
-            allGroups.AddRange(result.Value.Select(x => new GroupModel
-           (
-                         x.Id,
-                        x.DisplayName,
-                        x.Description
-                    )));
-            while (result?.OdataNextLink != null)
-            {
-                result = await _graphServiceClient.Groups.WithUrl(result.OdataNextLink).GetAsync();
-                if (result?.Value != null)
-                {
-                    allGroups.AddRange(result.Value.Select(x => new GroupModel
-                   (
-                         x.Id,
-                        x.DisplayName,
-                        x.Description
-                    )));
-                }
-            }
+            result = await _graphServiceClient.Groups.WithUrl(result.OdataNextLink).GetAsync();
+            AddGroupsFromResult(result, allGroups);
         }
+
         return new OkObjectResult(allGroups);
     }
+
     [Function("migroups")]
     public async Task<IActionResult> GetGroupsAsync(
-         [HttpTrigger(
-        AuthorizationLevel.Anonymous, "get", Route ="mi/groups")] HttpRequest req)
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "mi/groups")] HttpRequest req)
     {
         var allGroups = new List<GroupModel>();
 
         try
         {
-            // Get the first page of groups
             var groupsPage = await _graphServiceClient.Groups.GetAsync();
+            AddGroupsFromResult(groupsPage, allGroups);
 
-            if (groupsPage?.Value != null)
+            while (groupsPage?.OdataNextLink != null)
             {
-                allGroups.AddRange(groupsPage.Value.Select(x => new GroupModel
-                (
-                         x.Id,
-                        x.DisplayName,
-                        x.Description
-                    )));
-
-                // Handle pagination if there are more groups
-                while (groupsPage?.OdataNextLink != null)
-                {
-                    groupsPage = await _graphServiceClient.Groups.WithUrl(groupsPage.OdataNextLink).GetAsync();
-                    if (groupsPage?.Value != null)
-                    {
-                        allGroups.AddRange(groupsPage.Value.Select(x => new GroupModel
-                        (
-                         x.Id,
-                        x.DisplayName,
-                        x.Description
-                    )));
-                    }
-                }
+                groupsPage = await _graphServiceClient.Groups.WithUrl(groupsPage.OdataNextLink).GetAsync();
+                AddGroupsFromResult(groupsPage, allGroups);
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error getting groups: {ex.Message}");
+            _logger.LogError(ex, "Error getting groups");
         }
 
         return new OkObjectResult(allGroups);
@@ -182,41 +110,40 @@ public class MsGraphExamplesUsingManagedIdentity
 
     [Function("miusertransitivegroups")]
     public async Task<IActionResult> GetUserTransitiveGroupsAsync(
-          [HttpTrigger(
-        AuthorizationLevel.Anonymous, "get",Route ="mi/usertransitivegroups/{username}")] HttpRequest req,
-          string username)
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "mi/usertransitivegroups/{username}")] HttpRequest req,
+        string username)
     {
-
         var allGroups = new List<GroupModel>();
-
-        var result = await _graphServiceClient.Users[username].TransitiveMemberOf.GraphGroup.GetAsync((requestConfiguration) =>
+        var result = await _graphServiceClient.Users[username].TransitiveMemberOf.GraphGroup.GetAsync(config =>
         {
-            // requestConfiguration.QueryParameters.Filter = "appRoleAssignments/$count gt 0";
-            requestConfiguration.QueryParameters.Select = new string[] { "id", "displayName", "description" };
+            config.QueryParameters.Select = new[] { "id", "displayName", "description" };
         });
+
+        AddGroupsFromResult(result, allGroups);
+
+        while (result?.OdataNextLink != null)
+        {
+            result = await _graphServiceClient.Users[username].TransitiveMemberOf.GraphGroup.WithUrl(result.OdataNextLink).GetAsync();
+            AddGroupsFromResult(result, allGroups);
+        }
+
+        return new OkObjectResult(allGroups);
+    }
+
+    private static void AddUsersFromResult(UserCollectionResponse? result, List<UserModel> allUsers)
+    {
         if (result?.Value != null)
         {
-            allGroups.AddRange(result.Value.Select(x => new GroupModel
-            (
-                         x.Id,
-                        x.DisplayName,
-                        x.Description
-                    )));
-            while (result?.OdataNextLink != null)
-            {
-                result = await _graphServiceClient.Users[username].TransitiveMemberOf.GraphGroup.WithUrl(result.OdataNextLink).GetAsync();
-                if (result?.Value != null)
-                {
-                    allGroups.AddRange(result.Value.Select(x => new GroupModel
-                    (
-                         x.Id,
-                        x.DisplayName,
-                        x.Description
-                    )));
-                }
-            }
+            allUsers.AddRange(result.Value.Select(user => new UserModel(user?.Id, user?.DisplayName, user?.UserPrincipalName)));
         }
-        return new OkObjectResult(allGroups);
+    }
+
+    private static void AddGroupsFromResult(GroupCollectionResponse? result, List<GroupModel> allGroups)
+    {
+        if (result?.Value != null)
+        {
+            allGroups.AddRange(result.Value.Select(x => new GroupModel(x.Id, x.DisplayName, x.Description)));
+        }
     }
 }
 
