@@ -21,8 +21,15 @@ public class MsGraphExamplesUsingManagedIdentity
     {
         _logger = logger;
         _configuration = configuration;
-        var credential = new DefaultAzureCredential();
+        var clientId = _configuration["MSAL_CLIENT_ID"];
+        var credential = new ManagedIdentityCredential(clientId);
+
+        //var credential = new DefaultAzureCredential(manage) ;
+        //DefaultAzureCredential credential = new DefaultAzureCredentialBuilder()
+        //    .managedIdentityClientId("your-user-assigned-managed-identity-client-id")
+        //    .build();
         var scopes = new[] { "https://graph.microsoft.com/.default" };
+        
         _graphServiceClient = new GraphServiceClient(credential, scopes);
     }
 
